@@ -1,69 +1,143 @@
-import Image from "next/image";
+"use client";
+import { useEffect, useState } from "react";
+import { BookOpen, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { PaperCard, PaperCardSkeleton } from "@/components/paper-card";
+import { PaperPanel } from "@/components/paper-panel";
+import type { Paper } from "@/lib/types";
 
 export default function Home() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Paper[] | null>(null);
+  const [saved, setSaved] = useState<Paper[]>([]);
+  const [tab, setTab] = useState<"results" | "saved">("results");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Paper | null>(null);
+
+  useEffect(() => {
+    fetch("/api/saved")
+      .then((r) => r.json())
+      .then((d) => setSaved(d.papers));
+  }, []);
+
+  async function search(e: React.FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setTab("results");
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Search failed");
+      setResults(d.papers);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleSave(p: Paper) {
+    const isSaved = saved.some((s) => s.id === p.id);
+    const res = isSaved
+      ? await fetch(`/api/saved?id=${encodeURIComponent(p.id)}`, { method: "DELETE" })
+      : await fetch("/api/saved", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p),
+        });
+    setSaved((await res.json()).papers);
+  }
+
+  const list = tab === "results" ? results : saved;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <div className="flex h-screen flex-col">
+      <header className="border-b p-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 font-semibold">
+            <BookOpen className="size-5" /> Paper Assistant
+          </div>
+          <form onSubmit={search} className="flex flex-1 gap-2">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search arXiv — e.g. retrieval augmented generation"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <Button type="submit" disabled={loading}>
+              <Search className="size-4" /> Search
+            </Button>
+          </form>
         </div>
-      </main>
+      </header>
+
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1">
+        <div className="flex min-h-0 flex-1 flex-col border-r">
+          <div className="flex gap-1 p-3">
+            <Button size="sm" variant={tab === "results" ? "secondary" : "ghost"} onClick={() => setTab("results")}>
+              Results
+            </Button>
+            <Button size="sm" variant={tab === "saved" ? "secondary" : "ghost"} onClick={() => setTab("saved")}>
+              Reading list ({saved.length})
+            </Button>
+          </div>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-3 p-3 pt-0">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => <PaperCardSkeleton key={i} />)
+              ) : error ? (
+                <p className="p-6 text-center text-sm text-destructive">{error}</p>
+              ) : list === null ? (
+                <Empty title="Search for a topic" body="Find papers on arXiv, get a plain-English summary, and ask questions." />
+              ) : list.length === 0 ? (
+                <Empty
+                  title={tab === "saved" ? "Nothing saved yet" : "No papers found"}
+                  body={tab === "saved" ? "Open a paper and hit “Save to reading list”." : "Try different keywords."}
+                />
+              ) : (
+                list.map((p) => (
+                  <PaperCard
+                    key={p.id}
+                    paper={p}
+                    selected={selected?.id === p.id}
+                    saved={saved.some((s) => s.id === p.id)}
+                    onSelect={() => setSelected(p)}
+                  />
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {selected ? (
+          <aside className="fixed inset-0 z-10 md:static md:w-[440px] md:shrink-0">
+            <PaperPanel
+              paper={selected}
+              saved={saved.some((s) => s.id === selected.id)}
+              onToggleSave={() => toggleSave(selected)}
+              onClose={() => setSelected(null)}
+            />
+          </aside>
+        ) : (
+          <aside className="hidden w-[440px] shrink-0 items-center justify-center p-8 text-center text-sm text-muted-foreground md:flex">
+            Select a paper to see its summary and chat about it.
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Empty({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 p-10 text-center">
+      <BookOpen className="mb-2 size-8 text-muted-foreground" />
+      <p className="font-medium">{title}</p>
+      <p className="text-sm text-muted-foreground">{body}</p>
     </div>
   );
 }
